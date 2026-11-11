@@ -1,0 +1,219 @@
+{
+  "id": "PLzSSPXUakfwW3BM",
+  "name": "Tally bridge",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mattr-bridge",
+        "responseMode": "responseNode",
+        "options": {
+          "binaryPropertyName": "data",
+          "rawBody": true
+        }
+      },
+      "id": "98a85561-1d60-4e1e-8e9e-73e9bb0ead1e",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        208
+      ],
+      "webhookId": "5d202d50-4004-4a92-b6ef-86e5261272d3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verifies the MATTR AI bridge request WITHOUT throwing, so every request gets a clear HTTP answer.\n// Needs on the n8n container: NODE_FUNCTION_ALLOW_BUILTIN=crypto,zlib and the secret in\n// MATTR_BRIDGE_SECRET (with N8N_BLOCK_ENV_ACCESS_IN_NODE=false), the same value as the\n// backend's TC_N8N_WEBHOOK_SECRET.\nconst crypto = require('crypto');\nconst zlib = require('zlib');\n\nconst item = $input.first();\nconst headers = item.json.headers ?? {};\nconst fail = (status, error) => [{ json: { valid: false, http_status: status, error } }];\n// Only these headers reach the database (never the signature itself).\nconst keep = ['x-idempotency-key', 'x-application-id', 'x-batch-seq', 'x-kind', 'x-part', 'x-of', 'x-timestamp'];\nconst headersJson = JSON.stringify(Object.fromEntries(keep.filter(k => headers[k] != null).map(k => [k, String(headers[k])])));\nconst reject = () => [{ json: { valid: true, sig_ok: false, headers_json: headersJson, body_json: '{}' } }];\n\nconst secret = $env.MATTR_BRIDGE_SECRET;\nif (!secret) return fail(503, 'bridge_not_configured');\n\nlet raw;\ntry {\n  raw = await this.helpers.getBinaryDataBuffer(0, 'data');\n} catch (e) {\n  return fail(400, 'raw_body_missing');\n}\nif (!raw || raw.length === 0) return fail(400, 'empty_body');\nif (raw.length > 6 * 1024 * 1024) return fail(413, 'part_too_large');\n\nconst ts = String(headers['x-timestamp'] ?? '');\nconst sig = String(headers['x-signature'] ?? '');\nif (!/^\\d{9,11}$/.test(ts) || !sig.startsWith('sha256=')) return reject();\nif (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return reject();   // older than 5 minutes: replay\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret)\n  .update(Buffer.concat([Buffer.from(ts + '.'), raw])).digest('hex');\nconst a = Buffer.from(expected), b = Buffer.from(sig);\nif (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return reject();\n\nlet body;\ntry {\n  body = zlib.gunzipSync(raw, { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8');\n  JSON.parse(body);\n} catch (e) {\n  return fail(400, 'not_gzipped_json');\n}\nreturn [{ json: { valid: true, sig_ok: true, headers_json: headersJson, body_json: body } }];\n"
+      },
+      "id": "cee6c9a8-7d6d-425e-b94d-f28c8e2bbb30",
+      "name": "Verify signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2a83f929-51cc-49da-aa7e-1c1ce440a80c",
+              "leftValue": "={{ $json.valid === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "8cf31f8e-3678-4c38-b45e-8bfc190f4a81",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT apply_sync_batch($1::boolean, $2::jsonb, $3::jsonb) AS r;",
+        "options": {
+          "queryReplacement": "={{ [ $json.sig_ok, $json.headers_json, $json.body_json ] }}"
+        }
+      },
+      "id": "bc8ba4ed-266e-4607-a5e0-e3a37c135392",
+      "name": "Store and apply",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        688,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "postgres": {
+          "id": "wXkDYbbzb5jBUSyz",
+          "name": "Postgres n8n_ingest"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify(Object.fromEntries(Object.entries($json.r).filter(([k]) => k !== 'status'))) }}",
+        "options": {
+          "responseCode": "={{ Number($json.r.status) }}"
+        }
+      },
+      "id": "dad0dbb1-cc50-44f9-80ce-5f5688d3a468",
+      "name": "Respond result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: 'temporarily_unavailable', retry: true }) }}",
+        "options": {
+          "responseCode": 503
+        }
+      },
+      "id": "a8d64978-c384-4b4f-b915-60b9c4481803",
+      "name": "Respond DB unavailable",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ Number($json.http_status) }}"
+        }
+      },
+      "id": "db46cf55-371f-4ac5-a15f-5e54479d7c88",
+      "name": "Respond invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        352
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify signature": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Store and apply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store and apply": {
+      "main": [
+        [
+          {
+            "node": "Respond result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond DB unavailable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "tags": []
+}
