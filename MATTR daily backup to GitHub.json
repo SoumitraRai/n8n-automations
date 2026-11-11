@@ -1,0 +1,545 @@
+{
+  "id": "FNCXa2tP61cE0cF7",
+  "name": "MATTR daily backup to GitHub",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "id": "234a4f30-4a84-4784-aa82-d42a7436cbeb",
+      "name": "Every night at midnight",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        64,
+        368
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30b290d2-b60f-49a2-9ba4-9375299d0294",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        64,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a750697f-803f-4d93-b0da-7a4661903a0f",
+              "name": "repo_owner",
+              "type": "string",
+              "value": "SoumitraRai"
+            },
+            {
+              "id": "131ef56a-f7b0-40c8-b1aa-5eedca0a83d9",
+              "name": "repo_name",
+              "type": "string",
+              "value": "n8n-automations"
+            },
+            {
+              "id": "f6069632-2132-47ac-806c-d86aca9c17e0",
+              "name": "branch",
+              "type": "string",
+              "value": "main"
+            },
+            {
+              "id": "923ed08a-7179-4e4c-840a-842f49af6979",
+              "name": "folder",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b88fa0e7-4b62-4010-b94e-694549f53c1f",
+      "name": "Backup settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        288,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "filters": {
+          "activeWorkflows": true
+        },
+        "requestOptions": {}
+      },
+      "id": "e114a800-29ca-4991-a813-8bd9b1b1b021",
+      "name": "Get many workflows",
+      "type": "n8n-nodes-base.n8n",
+      "typeVersion": 1,
+      "position": [
+        512,
+        464
+      ],
+      "credentials": {
+        "n8nApi": {
+          "id": "Guq47WSe96S2qLBx",
+          "name": "n8n account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fa48af6e-5515-451d-b46d-5ab4e7a33922",
+      "name": "Loop over workflows",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        720,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "74a3067d-cd68-465a-a0f5-992b63b4cece",
+              "name": "fileName",
+              "type": "string",
+              "value": "={{ $json.name.replace(/[\\\\/:*?\"<>|]/g, '-').trim() }}.json"
+            },
+            {
+              "id": "db0e37dc-52ae-43bf-80b3-36a08a225d3a",
+              "name": "filePath",
+              "type": "string",
+              "value": "={{ $('Backup settings').first().json.folder }}{{ $json.name.replace(/[\\\\/:*?\"<>|]/g, '-').trim() }}.json"
+            },
+            {
+              "id": "ef32f2ac-c3fb-4f84-8c12-47652ebe4eeb",
+              "name": "workflowName",
+              "type": "string",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "id": "3cc24aac-6ead-48bc-8ff5-0d18ab2e74fc",
+              "name": "content",
+              "type": "string",
+              "value": "={{ JSON.stringify({ id: $json.id, name: $json.name, active: $json.active, nodes: $json.nodes, connections: $json.connections, settings: $json.settings || {}, tags: ($json.tags || []).map(t => t.name || t) }, null, 2) + '\\n' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4714ab1-09a2-4d02-b9b3-e32cc26041cf",
+      "name": "Format file",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        944,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_owner }}"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_name }}"
+        },
+        "filePath": "={{ $json.filePath }}",
+        "asBinaryProperty": false,
+        "additionalParameters": {
+          "reference": "={{ $('Backup settings').first().json.branch }}"
+        }
+      },
+      "id": "52f19d8b-f591-4cc5-a8fb-82f3e614145c",
+      "name": "Get file from GitHub",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        560
+      ],
+      "alwaysOutputData": true,
+      "webhookId": "b91211c9-9268-43cc-b5fb-b95d1a92733d",
+      "credentials": {
+        "githubApi": {
+          "id": "I7jyzNbB905Z6qGZ",
+          "name": "GitHub account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Is the workflow new on GitHub, changed, or the same? Same files are skipped,\n// so a night with no edits makes no commits.\nconst file = $('Format file').first().json;\nconst got = $input.first().json;\nlet status = 'new';\nif (got && got.sha) {\n  // GitHub only returns the content of files under 1 MB; bigger ones count as changed.\n  const old = got.content ? Buffer.from(got.content, 'base64').toString('utf8') : null;\n  status = old === file.content ? 'same' : 'changed';\n}\nreturn [{ json: { ...file, status } }];\n"
+      },
+      "id": "6c6ada45-88d3-4763-b32f-cd51644f9743",
+      "name": "Compare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c52ecdd5-8bee-4e84-8b10-48fd351a2d09",
+              "leftValue": "={{ $json.status === 'new' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "fbbd6e8d-825b-47b8-8cc0-707711463c73",
+      "name": "New file?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5966dab8-ecc4-4dea-9b2f-670b74876656",
+              "leftValue": "={{ $json.status === 'changed' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "05cb495c-3fcd-447a-a2ed-70b634e6db9d",
+      "name": "Changed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1824,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_owner }}"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_name }}"
+        },
+        "filePath": "={{ $json.filePath }}",
+        "fileContent": "={{ $json.content }}",
+        "commitMessage": "=Backup: {{ $json.workflowName }} (new)",
+        "additionalParameters": {
+          "branch": {
+            "branch": "={{ $('Backup settings').first().json.branch }}"
+          }
+        }
+      },
+      "id": "62d4f945-9b70-4467-97da-a06067a74006",
+      "name": "Create file",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        464
+      ],
+      "webhookId": "868d20d2-5e38-4c82-ac0f-a1df1c73921d",
+      "credentials": {
+        "githubApi": {
+          "id": "I7jyzNbB905Z6qGZ",
+          "name": "GitHub account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "edit",
+        "owner": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_owner }}"
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Backup settings').first().json.repo_name }}"
+        },
+        "filePath": "={{ $json.filePath }}",
+        "fileContent": "={{ $json.content }}",
+        "commitMessage": "=Backup: {{ $json.workflowName }} (changed)",
+        "additionalParameters": {
+          "branch": {
+            "branch": "={{ $('Backup settings').first().json.branch }}"
+          }
+        }
+      },
+      "id": "76a66197-bb55-4c43-a53f-b69d9f5dac81",
+      "name": "Update file",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        640
+      ],
+      "webhookId": "d9fb8b60-8189-4867-a2c3-b79f093aadae",
+      "credentials": {
+        "githubApi": {
+          "id": "I7jyzNbB905Z6qGZ",
+          "name": "GitHub account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "91c452d8-b98b-4e9d-b384-86f3b0413950",
+      "name": "Unchanged, skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2048,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Daily backup of workflows to GitHub\nEvery night at midnight (India time), each active workflow is saved to GitHub as `backups/<workflow name>.json`.\n\n- A file is only committed when the workflow **changed** since last night, so quiet nights make no commits.\n- Pinned test data and saved state are **left out**, since they can hold real figures. Credentials are never in a workflow: only their names are.\n- If one upload fails, the rest still run.\n\n**Before the first run:** set the owner, repository and branch in **Backup settings**, and pick your credentials in **Get many workflows** (n8n API) and the three GitHub nodes.\n\nSee `deploy/n8n/backup/BACKUP.md`.",
+        "height": 320,
+        "width": 560,
+        "color": 4
+      },
+      "id": "0b0c7a8b-dd8b-46a3-8da1-50e5a111b725",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Every night at midnight": {
+      "main": [
+        [
+          {
+            "node": "Backup settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Backup settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup settings": {
+      "main": [
+        [
+          {
+            "node": "Get many workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many workflows": {
+      "main": [
+        [
+          {
+            "node": "Loop over workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over workflows": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Format file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format file": {
+      "main": [
+        [
+          {
+            "node": "Get file from GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get file from GitHub": {
+      "main": [
+        [
+          {
+            "node": "Compare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare": {
+      "main": [
+        [
+          {
+            "node": "New file?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New file?": {
+      "main": [
+        [
+          {
+            "node": "Create file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Changed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Changed?": {
+      "main": [
+        [
+          {
+            "node": "Update file",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unchanged, skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create file": {
+      "main": [
+        [
+          {
+            "node": "Loop over workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update file": {
+      "main": [
+        [
+          {
+            "node": "Loop over workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unchanged, skip": {
+      "main": [
+        [
+          {
+            "node": "Loop over workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "tags": []
+}
